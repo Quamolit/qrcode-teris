@@ -13,25 +13,76 @@
           "\"shortid" :as shortid
           respo-ui.core :as ui
           memof.alias :refer $ memof-call
+          app.config :refer $ grid-size
       :defs $ {}
         |comp-container $ quote
           defn comp-container (store)
-            ; println "\"Store" store $ :tab store
+            js/console.log "\"Store" $ :grid store
             let
                 cursor $ []
                 states $ :states store
-              container ({})
-                text $ {} (:text "\"DEMO")
-                  :position $ [] 100 100
-                  :style $ {}
-                    :fill $ hslx 0 0 80
+              container
+                {} $ :position
+                  [] (* 0.5 js/window.innerWidth) (* 0.5 js/window.innerHeight)
+                , & $ -> (:grid store)
+                  map-indexed $ fn (row-idx row)
+                    -> row $ map-indexed
+                      fn (col-idx cell)
+                        rect $ {}
+                          :position $ []
+                            * (- row-idx middle-idx) 12
+                            * (- col-idx middle-idx) 12
+                          :size $ [] 11 11
+                          :fill $ hslx 200 10 30
+                  concat-all
+        |concat-all $ quote
+          defn concat-all (xs) (&list:concat & xs)
+        |middle-idx $ quote
+          def middle-idx $ * 0.5 (dec grid-size)
     |app.schema $ {}
-      :ns $ quote (ns app.schema)
+      :ns $ quote
+        ns app.schema $ :require
+          app.config :refer $ grid-size
       :defs $ {}
         |store $ quote
-          def store $ {} (:tab :drafts) (:x 0) (:keyboard-on? false) (:counted 0)
+          def store $ {}
             :states $ {}
-            :cursor $ []
+              :cursor $ []
+            :grid $ repeat (repeat nil grid-size) grid-size
+            :failed? false
+            :score 0
+            :dropping nil
+        |shapes $ quote
+          def shapes $ []
+            []
+              [][] (0 -1) (0 0) (0 1) (0 2)
+              [][] (-1 0) (0 0) (1 0) (2 0)
+            []
+              [][] (-1 0) (0 -1) (0 0) (1 0)
+              [][] (-1 0) (0 -1) (0 0) (0 1)
+              [][] (1 0) (0 -1) (0 0) (1 0)
+              [][] (0 1) (0 -1) (0 0) (1 0)
+            [] $ [][] (-1 0) (-1 1) (0 0) (0 1)
+            []
+              [][] (-1 -1) (0 -1) (0 0) (0 1)
+              [][] (-1 0) (-1 1) (0 0) (1 0)
+              [][] (1 1) (0 -1) (0 0) (0 1)
+              [][] (-1 0) (1 -1) (0 0) (1 0)
+            []
+              [][] (-1 1) (0 -1) (0 0) (0 1)
+              [][] (1 1) (-1 0) (0 0) (1 0)
+              [][] (1 -1) (0 -1) (0 0) (0 1)
+              [][] (-1 -1) (-1 0) (0 0) (1 0)
+            []
+              [][] (-1 0) (-1 1) (0 -1) (0 0)
+              [][] (-1 0) (0 0) (0 1) (1 1)
+              [][] (0 0) (0 1) (1 -1) (1 0)
+              [][] (-1 -1) (0 -1) (0 0) (1 0)
+            []
+              [][] (-1 -1) (-1 0) (0 0) (0 1)
+              [][] (-1 1) (0 1) (0 0) (1 0)
+              [][] (0 -1) (0 0) (0 1) (1 1)
+              [][] (-1 0) (0 0) (0 -1) (1 -1)
     |app.updater $ {}
       :ns $ quote
         ns app.updater $ :require
@@ -96,3 +147,4 @@
           def dev? $ = "\"dev" (get-env "\"mode")
         |site $ quote
           def site $ {} (:dev-ui "\"http://localhost:8100/main.css") (:release-ui "\"http://cdn.tiye.me/favored-fonts/main.css") (:cdn-url "\"http://cdn.tiye.me/phlox/") (:title "\"Phlox") (:icon "\"http://cdn.tiye.me/logo/quamolit.png") (:storage-key "\"phlox")
+        |grid-size $ quote (def grid-size 43)
