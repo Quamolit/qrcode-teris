@@ -171,6 +171,18 @@
           app.config :refer $ grid-size
           phlox.complex :as complex
       :defs $ {}
+        |quick-down-shape $ quote
+          defn quick-down-shape (store)
+            apply-args (0)
+              fn (n)
+                let
+                    pos $ complex/add (:drop-position store) ([] n 0)
+                    next-pos $ complex/add (:drop-position store)
+                      [] (inc n) 0
+                  if
+                    valid-put? (:drop-pick store) next-pos $ :grid store
+                    recur $ inc n
+                    assoc store :drop-position pos
         |move-shape $ quote
           defn move-shape (store step)
             let
@@ -221,6 +233,7 @@
               :right $ move-shape store ([] 0 1)
               :down $ move-shape store ([] 1 0)
               :reset schema/store
+              :quick-domw $ quick-down-shape store
         |change-shape $ quote
           defn change-shape (store)
             let
@@ -323,11 +336,15 @@
               fn () $ @*dispatch-fn :tick nil
               , config/tick-interval
             js/window.addEventListener "\"keydown" $ fn (event)
-              case-default (.-key event) nil
+              case-default (.-key event)
+                do
+                  println "\"Event:" $ .-key event
+                  , nil
                 "\"ArrowUp" $ @*dispatch-fn :up nil
                 "\"ArrowDown" $ @*dispatch-fn :down nil
                 "\"ArrowLeft" $ @*dispatch-fn :left nil
                 "\"ArrowRight" $ @*dispatch-fn :right nil
+                "\" " $ @*dispatch-fn :quick-domw nil
             println "\"App Started"
         |*store $ quote (defatom *store schema/store)
         |*dispatch-fn $ quote (defatom *dispatch-fn dispatch!)
