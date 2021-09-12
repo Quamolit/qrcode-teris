@@ -55,10 +55,9 @@
                                 .includes? dropping-cells p
                                 hslx 200 10 50
                               (some? cell)
-                                if
-                                  = (:kind cell) :preset
-                                  :color cell
-                                  hslx 10 80 10
+                                case-default (:kind cell) (hslx 10 80 10)
+                                  :preset $ :color cell
+                                  :collapsing $ hslx 30 90 70
                               true $ hslx 200 10 100
                   concat-all
                 comp-button $ {} (:text "\"Reset")
@@ -118,6 +117,7 @@
               :cursor $ []
             :grid $ gen-qrcode-grid grid-size
             :failed? false
+            :paused? false
             :score 0
             :drop-pick nil
             :drop-position nil
@@ -171,18 +171,27 @@
           app.config :refer $ grid-size
           phlox.complex :as complex
       :defs $ {}
-        |quick-down-shape $ quote
-          defn quick-down-shape (store)
-            apply-args (0)
-              fn (n)
-                let
-                    pos $ complex/add (:drop-position store) ([] n 0)
-                    next-pos $ complex/add (:drop-position store)
-                      [] (inc n) 0
+        |collapse-grid $ quote
+          defn collapse-grid (grid)
+            if
+              any? grid $ fn (row)
+                any? row $ fn (cell)
+                  = :collapsing $ :kind cell
+              -> grid (flip-grid)
+                map $ fn (col)
+                  collapse-column ([]) col 0
+                flip-grid
+              , grid
+        |mark-collapsing $ quote
+          defn mark-collapsing (grid)
+            map grid $ fn (row)
+              if (every? row some?)
+                map row $ fn (cell)
                   if
-                    valid-put? (:drop-pick store) next-pos $ :grid store
-                    recur $ inc n
-                    assoc store :drop-position pos
+                    = :filled $ :kind cell
+                    {} $ :kind :collapsing
+                    , cell
+                , row
         |move-shape $ quote
           defn move-shape (store step)
             let
@@ -191,6 +200,18 @@
                 valid-put? (:drop-pick store) next-pos $ :grid store
                 assoc store :drop-position next-pos
                 , store
+        |quick-move $ quote
+          defn quick-move (store step)
+            apply-args
+                [] 0 0
+              fn (at)
+                let
+                    pos $ complex/add (:drop-position store) at
+                    next-pos $ complex/add pos step
+                  if
+                    valid-put? (:drop-pick store) next-pos $ :grid store
+                    recur $ complex/add at step
+                    assoc store :drop-position pos
         |contains-in? $ quote
           defn contains-in? (xs path)
             if (empty? path) true $ let
@@ -207,6 +228,27 @@
                     recur (&map:get xs p0) (rest path)
                     , false
                 true false
+        |collapse-column $ quote
+          defn collapse-column (acc col collapsed)
+            if (empty? col)
+              if (> collapsed 0)
+                concat (repeat nil collapsed) acc
+                , acc
+              let
+                  cursor $ last col
+                cond
+                    nil? cursor
+                    recur (prepend acc nil) (butlast col) collapsed
+                  (= :collapsing (:kind cursor))
+                    recur acc (butlast col) (inc collapsed)
+                  (= :preset (:kind cursor))
+                    if (> collapsed 0)
+                      recur
+                        concat ([] cursor) (repeat nil collapsed) acc
+                        butlast col
+                        , 0
+                      recur (prepend acc cursor) (butlast col) collapsed
+                  true $ recur (prepend acc cursor) (butlast col) collapsed
         |updater $ quote
           defn updater (store op op-data op-id op-time)
             case-default op
@@ -214,7 +256,7 @@
               :states $ update-states store op-data
               :hydrate-storage op-data
               :tick $ cond
-                  :failed? store
+                  or (:failed? store) (:paused? store)
                   , store
                 (nil? (:drop-pick store))
                   -> store
@@ -233,7 +275,10 @@
               :right $ move-shape store ([] 0 1)
               :down $ move-shape store ([] 1 0)
               :reset schema/store
-              :quick-domw $ quick-down-shape store
+              :down-most $ quick-move store ([] 1 0)
+              :left-most $ quick-move store ([] 0 -1)
+              :right-most $ quick-move store ([] 0 1)
+              :toggle-pause $ update store :paused? not
         |change-shape $ quote
           defn change-shape (store)
             let
@@ -275,20 +320,29 @@
                     prepend acc $ last xs
                     butlast xs
                     , collapsed-size
+        |flip-grid $ quote
+          defn flip-grid (grid)
+            let
+                size $ count grid
+              map (range size)
+                fn (row-idx)
+                  map (range size)
+                    fn (col-idx)
+                      get-in grid $ [] col-idx row-idx
         |drop-shape $ quote
           defn drop-shape (store)
             let
                 next-pos $ complex/add (:drop-position store) ([] 1 0)
               if
                 valid-put? (:drop-pick store) next-pos $ :grid store
-                assoc store :drop-position next-pos
+                -> store (assoc :drop-position next-pos) (update :grid collapse-grid)
                 let
                     pick $ :drop-pick store
                     pos $ :drop-position store
                     grid $ :grid store
                     real-cells $ -> (get-in shapes-variations pick)
                       map $ fn (cell) (complex/add cell pos)
-                    new-grid $ detect-collapse
+                    new-grid $ mark-collapsing
                       foldl (.to-list real-cells) grid $ fn (acc pos)
                         assoc-in acc pos $ {} (:kind :filled)
                   -> store
@@ -333,7 +387,9 @@
             add-watch *store :change $ fn (store prev) (render-app!)
             js/window.addEventListener "\"resize" $ fn (e) (render-app!)
             js/setInterval
-              fn () $ @*dispatch-fn :tick nil
+              fn () $ if
+                not (:paused? @*store) (:failed? @*store)
+                @*dispatch-fn :tick nil
               , config/tick-interval
             js/window.addEventListener "\"keydown" $ fn (event)
               case-default (.-key event)
@@ -341,10 +397,11 @@
                   println "\"Event:" $ .-key event
                   , nil
                 "\"ArrowUp" $ @*dispatch-fn :up nil
-                "\"ArrowDown" $ @*dispatch-fn :down nil
-                "\"ArrowLeft" $ @*dispatch-fn :left nil
-                "\"ArrowRight" $ @*dispatch-fn :right nil
-                "\" " $ @*dispatch-fn :quick-domw nil
+                "\"ArrowDown" $ if (.-shiftKey event) (@*dispatch-fn :down-most nil) (@*dispatch-fn :down nil)
+                "\"ArrowLeft" $ if (.-shiftKey event) (@*dispatch-fn :left-most nil) (@*dispatch-fn :left nil)
+                "\"ArrowRight" $ if (.-shiftKey event) (@*dispatch-fn :right-most nil) (@*dispatch-fn :right nil)
+                "\" " $ @*dispatch-fn :down-most nil
+                "\"Enter" $ @*dispatch-fn :toggle-pause nil
             println "\"App Started"
         |*store $ quote (defatom *store schema/store)
         |*dispatch-fn $ quote (defatom *dispatch-fn dispatch!)
