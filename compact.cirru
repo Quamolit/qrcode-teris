@@ -34,8 +34,7 @@
                   #{}
               ; println $ :failed? store
               container
-                {} $ :position
-                  [] (* 0.5 js/window.innerWidth) (* 0.5 js/window.innerHeight)
+                {} $ :position ([] 0 0)
                 rect $ {}
                   :position $ [] -300 -300
                   :fill $ hslx 0 0 96
